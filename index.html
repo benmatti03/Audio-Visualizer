@@ -190,15 +190,9 @@
                 const url = URL.createObjectURL(file);
                 audio.src = url;
                 audio.load();
-                if (audioContext) {
-                    audioContext.close();
-                    audioContext = null;
-                }
-                audio.oncanplay = () => {
-                    initAudio();
-                    audio.play();
-                    audio.oncanplay = null;
-                };
+                visualizerActive = false; // Reset
+                // Do NOT auto-play, just wait for user to press play
+                // When user presses play, the audio event listener will trigger initAudio
             }
         });
 
