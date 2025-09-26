@@ -1,4 +1,3 @@
-index.html
 <!DOCTYPE html>
 <html>
 <head>
@@ -52,6 +51,10 @@ index.html
             color: black;
             font-weight: bold;
         }
+        .audio-upload {
+            margin-top: 10px;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
@@ -72,8 +75,9 @@ index.html
         </div>
 
         <hr style="border-color:#333; margin: 10px 0;">
-        
-        <h2>Audio Player (Must Play to Start Visuals)</h2>
+
+        <h2>Audio Player (Upload or Use Default)</h2>
+        <input type="file" id="audioFile" class="audio-upload" accept="audio/*" />
         <audio id="audioPlayer" controls loop>
             <source src="song.mp3" type="audio/mpeg">
             Your browser does not support the audio element.
@@ -87,12 +91,13 @@ index.html
         const canvas = document.getElementById('glitchCanvas');
         const ctx = canvas.getContext('2d');
         const audio = document.getElementById('audioPlayer');
-        
+        const fileInput = document.getElementById('audioFile');
+
         // Control Elements
         const speedSlider = document.getElementById('speedSlider');
         const colorPicker = document.getElementById('colorPicker');
         const rainbowButton = document.getElementById('rainbowButton');
-        
+
         canvas.width = window.innerWidth * 0.95;
         canvas.height = window.innerHeight * 0.95;
 
@@ -117,7 +122,6 @@ index.html
         let bassEnergy = 0;
         let midHighEnergy = 0;
 
-
         // --- Camera & 3D Variables ---
         const camera = {
             x: 0, y: 150, z: -800, 
@@ -129,20 +133,16 @@ index.html
         let globalTime = 0;
 
         // --- Initialization and Audio Setup ---
-
         function initAudio() {
             if (audioContext) return;
-            
             // Create AudioContext only after user interaction (playing the audio)
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioContext.createAnalyser();
             analyser.fftSize = FFT_SIZE;
             frequencyData = new Uint8Array(analyser.frequencyBinCount);
-            
             const source = audioContext.createMediaElementSource(audio);
             source.connect(analyser);
             analyser.connect(audioContext.destination);
-            
             console.log("Audio Context Initialized. Ready for analysis.");
         }
 
@@ -150,8 +150,23 @@ index.html
             initAudio(); // Initialize audio context on first play
         });
 
-        // --- Utility Functions ---
+        // Handle audio file uploads
+        fileInput.addEventListener('change', function() {
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                const url = URL.createObjectURL(file);
+                audio.src = url;
+                audio.load();
+                audio.play();
+                // Reset context for new source
+                if (audioContext) {
+                    audioContext.close();
+                    audioContext = null;
+                }
+            }
+        });
 
+        // --- Utility Functions ---
         function hexToRgbA(hex, alpha) {
             let r = parseInt(hex.substring(1, 3), 16);
             let g = parseInt(hex.substring(3, 5), 16);
@@ -177,16 +192,13 @@ index.html
                          (Math.round(g * 255)).toString(16).padStart(2, '0') + 
                          (Math.round(b * 255)).toString(16).padStart(2, '0');
         }
-
         // Lerp and Perlin Noise functions (same as previous version)
         function lerp(a, b, t) { return a + t * (b - a); }
         function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
-
         const permutation = new Array(512);
         const p = new Array(256);
         for (let i = 0; i < 256; i++) { p[i] = Math.floor(Math.random() * 256); }
         for (let i = 0; i < 512; i++) { permutation[i] = p[i & 255]; }
-
         function grad(hash, x, y, z) {
             switch (hash & 0xF) {
                 case 0x0: return x + y; case 0x1: return -x + y; case 0x2: return x - y;
@@ -208,7 +220,6 @@ index.html
         }
 
         // --- 3D Point Structure and Grid Init ---
-
         class Point3D {
             constructor(x, y, z) {
                 this.x = x;
@@ -230,7 +241,6 @@ index.html
         }
 
         // --- Project 3D to 2D ---
-
         function project(p3d) {
             let tx = p3d.x - camera.x;
             let ty = p3d.y - camera.y;
@@ -244,7 +254,6 @@ index.html
         }
 
         // --- Glitchy Line Drawing Function ---
-
         function drawGlitchyLine(p1, p2, scale) {
             ctx.lineWidth = (1 / (1 + p1.depth * 0.002));
             if (ctx.lineWidth < 0.2) return; 
@@ -289,7 +298,6 @@ index.html
                 midHighEnergy = 0;
                 return;
             }
-
             analyser.getByteFrequencyData(frequencyData);
 
             let bassSum = 0;
@@ -309,7 +317,6 @@ index.html
             // Normalize and smooth the values
             bassEnergy = bassSum / bassBins / 255; // 0 to 1 range
             midHighEnergy = midHighSum / (FFT_SIZE / 2 - midHighStart) / 255;
-            
             // Add a simple decay to prevent visuals from sticking at max
             bassEnergy *= 0.85;
             midHighEnergy *= 0.85; 
@@ -327,14 +334,12 @@ index.html
             for (let i = 0; i < GRID_SIZE; i++) {
                 for (let j = 0; j < GRID_SIZE; j++) {
                     let p = points[i][j];
-                    
                     // The core Perlin Noise Z value
                     const baseZ = perlinNoise(
                         (p.x + noiseOffset.x) * NOISE_SCALE,
                         (p.y + noiseOffset.y) * NOISE_SCALE,
                         noiseZInput
                     ) * MAX_Z_DEFORMATION;
-                    
                     // BASS IMPACT: The loud bass makes the entire shape "jump" or deform
                     const audioImpact = bassEnergy * MAX_Z_DEFORMATION * 2; 
                     p.z = baseZ + audioImpact;
@@ -345,7 +350,6 @@ index.html
             for (let i = 0; i < GRID_SIZE; i++) {
                 for (let j = 0; j < GRID_SIZE; j++) {
                     let p1 = project(points[i][j]);
-
                     if (j < GRID_SIZE - 1) {
                         let p2 = project(points[i][j+1]);
                         drawGlitchyLine(p1, p2, p1.scale);
@@ -361,20 +365,17 @@ index.html
         // --- Animation Loop ---
         function animate() {
             globalTime++;
-            
             // Camera Movement (Uses speed for camera forward motion)
             const forwardSpeed = 5 * CURRENT_SPEED;
             camera.x += Math.sin(globalTime * 0.005) * 2 * CURRENT_SPEED;
             camera.y = camera.targetY + Math.sin(globalTime * 0.003) * 50 * CURRENT_SPEED;
             camera.z += forwardSpeed; 
             if (camera.z > 0) camera.z = -800; 
-
             draw();
             requestAnimationFrame(animate);
         }
 
         // --- Input Event Handlers ---
-        
         speedSlider.addEventListener('input', (e) => {
             CURRENT_SPEED = e.target.value / 100;
         });
@@ -410,4 +411,3 @@ index.html
     </script>
 </body>
 </html>
-Add index.html
