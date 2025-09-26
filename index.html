@@ -1,10 +1,19 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Audio-Reactive Glitch Visualizer</title>
+    <title>Audio-Reactive Glitch Visualizer - Retro Edition</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
     <style>
+        /* --- General & Core Aesthetics --- */
+        :root {
+            --neon-green: #00ffc8;
+            --dark-background: #000;
+            --button-dark: #111;
+        }
+
         body {
-            background-color: #000;
+            background-color: var(--dark-background);
             margin: 0;
             overflow: hidden;
             display: flex;
@@ -12,74 +21,190 @@
             align-items: center;
             height: 100vh;
             flex-direction: column;
+            font-family: 'Space Mono', monospace;
+            color: var(--neon-green);
         }
+        
         canvas {
-            background-color: #000;
-            cursor: pointer;
+            background-color: var(--dark-background);
+            cursor: crosshair;
+            display: block;
         }
+
+        /* --- UI Container - The Glowing Panel --- */
         .controls {
             position: absolute;
-            top: 10px;
-            left: 10px;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px;
-            border-radius: 5px;
-            color: #fff;
-            font-family: monospace;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 0; /* Sharp corners */
+            border: 2px solid var(--neon-green);
+            box-shadow: 0 0 15px var(--neon-green), inset 0 0 5px rgba(0, 255, 200, 0.5);
             z-index: 10;
+            max-width: 350px;
         }
+
+        .controls h2 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: var(--neon-green);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-size: 1.2em;
+            text-shadow: 0 0 5px var(--neon-green);
+        }
+        
         .control-group {
-            margin-bottom: 8px;
+            margin-bottom: 12px;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 15px;
         }
+        
         label {
-            width: 80px;
+            min-width: 80px;
             text-align: right;
+            font-size: 0.9em;
+            color: #ccc;
         }
-        button {
-            background-color: #555;
-            color: white;
-            border: none;
-            padding: 5px 10px;
+
+        /* --- Sliders --- */
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 8px;
+            background: rgba(0, 255, 200, 0.2);
+            border: 1px solid var(--neon-green);
+            outline: none;
+            opacity: 0.9;
+            transition: opacity .2s;
+            border-radius: 0;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--neon-green);
             cursor: pointer;
-            border-radius: 3px;
+            border-radius: 50%;
+            box-shadow: 0 0 5px var(--neon-green);
         }
+        
+        /* --- Color Picker --- */
+        input[type="color"] {
+            -webkit-appearance: none;
+            border: none;
+            width: 40px;
+            height: 40px;
+            background: transparent;
+            cursor: pointer;
+            padding: 0;
+        }
+        
+        input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+        
+        input[type="color"]::-webkit-color-swatch {
+            border: 2px solid var(--neon-green);
+            border-radius: 5px;
+            box-shadow: 0 0 5px rgba(0, 255, 200, 0.5);
+        }
+        
+        /* --- Buttons --- */
+        button {
+            background-color: var(--button-dark);
+            color: var(--neon-green);
+            border: 1px solid var(--neon-green);
+            padding: 8px 15px;
+            cursor: pointer;
+            border-radius: 0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: background-color 0.1s, color 0.1s, box-shadow 0.1s;
+            font-family: 'Space Mono', monospace;
+            box-shadow: 0 0 5px rgba(0, 255, 200, 0.5);
+        }
+        
+        button:hover {
+            background-color: var(--neon-green);
+            color: var(--button-dark);
+            box-shadow: 0 0 15px var(--neon-green);
+        }
+        
         #rainbowButton.active {
             background: linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3);
-            color: black;
+            color: var(--dark-background);
             font-weight: bold;
+            border: none;
+            box-shadow: 0 0 10px var(--neon-green);
         }
-        .audio-upload {
-            margin-top: 10px;
-            margin-bottom: 10px;
+        
+        /* --- Audio Player and Separator --- */
+        hr {
+            border: none;
+            border-top: 1px dashed #555;
+            margin: 15px 0;
         }
+
+        audio {
+            width: 100%;
+            margin-top: 15px;
+            /* Filter to change the audio player's color to green/dark */
+            filter: invert(1) sepia(1) saturate(5) hue-rotate(100deg);
+        }
+
+        .intro-message {
+            position: absolute;
+            text-align: center;
+            color: var(--neon-green);
+            font-family: 'Space Mono', monospace;
+            font-size: 1.5em;
+            padding: 20px;
+            text-shadow: 0 0 5px var(--neon-green);
+            transition: opacity 1s;
+            pointer-events: none;
+        }
+
     </style>
 </head>
 <body>
     <div class="controls">
-        <h2>Visualizer Controls</h2>
+        <h2>System Controls</h2>
+        
         <div class="control-group">
             <label for="speedSlider">Speed:</label>
-            <input type="range" id="speedSlider" min="1" max="50" value="20">
+            <input type="range" id="speedSlider" min="1" max="100" value="20">
         </div>
+        
         <div class="control-group">
-            <label for="colorPicker">Color:</label>
+            <label for="colorPicker">Line Color:</label>
             <input type="color" id="colorPicker" value="#00ffc8">
         </div>
+        
         <div class="control-group">
-            <button id="rainbowButton">🌈 Rainbow Mode</button>
+            <button id="rainbowButton">🌈 Cycle Color</button>
         </div>
-        <hr style="border-color:#333; margin: 10px 0;">
-        <h2>Audio Player (Upload or Use Default)</h2>
+        
+        <hr>
+        
+        <h2>Audio Source</h2>
         <input type="file" id="audioFile" class="audio-upload" accept="audio/*" />
         <audio id="audioPlayer" controls loop>
             <source src="song.mp3" type="audio/mpeg">
             Your browser does not support the audio element.
         </audio>
     </div>
+
     <canvas id="glitchCanvas"></canvas>
+    
+    <div class="intro-message">
+        INITIATE VISUALIZER: PRESS PLAY OR UPLOAD AUDIO
+    </div>
+
     <script>
         // ---- DOM elements ----
         const canvas = document.getElementById('glitchCanvas');
@@ -89,6 +214,7 @@
         const speedSlider = document.getElementById('speedSlider');
         const colorPicker = document.getElementById('colorPicker');
         const rainbowButton = document.getElementById('rainbowButton');
+        const introMessage = document.querySelector('.intro-message'); // NEW
 
         // ---- Parameters ----
         let GRID_SIZE = 32;
@@ -179,6 +305,10 @@
                 audioContext.resume();
             }
             visualizerActive = true;
+            // Hide the intro message when audio starts
+            if (introMessage) {
+                introMessage.style.opacity = '0';
+            }
         });
         audio.addEventListener('pause', () => { visualizerActive = false; });
         audio.addEventListener('ended', () => { visualizerActive = false; });
@@ -191,7 +321,6 @@
                 audio.src = url;
                 audio.load();
                 visualizerActive = false; // Reset
-                // Do NOT auto-play, just wait for user to press play
                 // When user presses play, the audio event listener will trigger initAudio
             }
         });
@@ -285,6 +414,10 @@
             let colorToUse = IS_RAINBOW_MODE ? hsvToRgb(globalTime * 0.0001 % 1, 1, 1) : BASE_LINE_COLOR;
             let opacity = Math.max(0.1, 1 - Math.abs(p1.depth) / 1500);
             ctx.strokeStyle = hexToRgbA(colorToUse, opacity * alpha);
+            
+            // Add a subtle neon glow to the lines
+            ctx.shadowColor = colorToUse;
+            ctx.shadowBlur = 3 * opacity; 
 
             let startX = p1.x; let startY = p1.y; let endX = p2.x; let endY = p2.y;
             let numSegments = Math.max(2, Math.floor(Math.sqrt((endX - startX) ** 2 + (endY - startY) ** 2) / 20));
@@ -310,6 +443,7 @@
                 ctx.lineTo(segEndX, segEndY);
                 ctx.stroke();
             }
+            ctx.shadowBlur = 0; // Turn off shadow after drawing lines
         }
 
         // ---- Audio Analysis ----
@@ -336,20 +470,26 @@
 
         // ---- Chill/Transition Drawing ----
         function drawChillParticles(alpha = 1.0) {
+            // Updated chill particles for a more abstract/glowing feel
             ctx.save();
-            ctx.globalAlpha = alpha;
+            ctx.globalAlpha = alpha * 0.8;
             for (let i = 0; i < chillParticles.length; i++) {
                 const p = chillParticles[i];
                 p.pulse += p.pulseSpeed;
-                let pulseR = p.baseR + Math.sin(p.pulse) * 3 + (Math.random() - 0.5) * 2;
+                let pulseR = p.baseR + Math.sin(p.pulse) * 5 + (Math.random() - 0.5) * 3;
                 p.x += p.vx; p.y += p.vy;
+                
+                // Wrap particles
                 if (p.x > canvas.width) p.x = 0;
                 if (p.x < 0) p.x = canvas.width;
                 if (p.y > canvas.height) p.y = 0;
                 if (p.y < 0) p.y = canvas.height;
+                
                 const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, pulseR);
-                grad.addColorStop(0, `rgba(255,255,255,${p.opacity})`);
-                grad.addColorStop(1, `rgba(255,255,255,0)`);
+                // Use a magenta/purple glow for chill mode, matching the image example
+                grad.addColorStop(0, `rgba(255,0,255,${p.opacity})`);
+                grad.addColorStop(1, `rgba(0,0,0,0)`);
+                
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, pulseR, 0, Math.PI * 2);
                 ctx.fillStyle = grad;
@@ -449,7 +589,6 @@
                 ctx.font = "20px monospace";
                 ctx.fillText("JS Error: " + err.message, 50, 80);
                 ctx.restore();
-                // Optionally, log to console as well
                 console.error(err);
             }
         }
@@ -468,8 +607,9 @@
             rainbowButton.classList.toggle('active', IS_RAINBOW_MODE);
         });
         canvas.addEventListener('click', () => {
-            noiseOffset.x += (Math.random() * 1000 - 500) * (1 + bassEnergy * 2);
-            noiseOffset.y += (Math.random() * 1000 - 500) * (1 + bassEnergy * 2);
+            // Apply a sharper glitch/shift effect on click
+            noiseOffset.x += (Math.random() * 1000 - 500) * (1 + bassEnergy * 4);
+            noiseOffset.y += (Math.random() * 1000 - 500) * (1 + bassEnergy * 4);
             camera.targetY = (Math.random() - 0.5) * 300;
         });
         window.addEventListener('resize', () => {
@@ -477,6 +617,11 @@
             canvas.height = window.innerHeight * 0.95;
             initGrid();
             spawnChillParticles();
+            // Recenter the intro message on resize
+            if (introMessage) {
+                introMessage.style.left = `${(window.innerWidth - introMessage.offsetWidth) / 2}px`;
+                introMessage.style.top = `${(window.innerHeight - introMessage.offsetHeight) / 2}px`;
+            }
         });
 
         // ---- Initial setup ----
