@@ -97,18 +97,16 @@
         const colorPicker = document.getElementById('colorPicker');
         const rainbowButton = document.getElementById('rainbowButton');
 
-        canvas.width = window.innerWidth * 0.95;
-        canvas.height = window.innerHeight * 0.95;
-
-        // --- Visualization Configuration ---
-        const GRID_SIZE = 40; 
+        // --- Performance & Visual Params ---
+        // Lowered grid for perf, cap on line segments, and perf monitoring
+        let GRID_SIZE = 32; // was 40
         const CELL_SIZE = 120; 
         const MAX_Z_DEFORMATION = 350;
         const NOISE_SCALE = 0.02; 
         const GLITCH_INTENSITY = 10; 
-        const FOG_COLOR = 'rgba(0, 0, 0, 0.1)'; 
+        const FOG_COLOR = 'rgba(0, 0, 0, 0.10)'; 
+        const MAX_LINE_SEGMENTS = 5; // cap segments per line for perf
 
-        // Live-Updated Variables
         let BASE_LINE_COLOR = colorPicker.value;
         let CURRENT_SPEED = speedSlider.value / 100;
         let IS_RAINBOW_MODE = false;
@@ -131,6 +129,15 @@
         let points = []; 
         let noiseOffset = { x: 0, y: 0 }; 
         let globalTime = 0;
+
+        // --- Ambience/Visualizer Transition ---
+        let visualizerActive = false; // true = grid, false = ambience dots
+        let modeTransition = 0; // 0 = ambience, 1 = grid, between = fade
+
+        // --- FPS Monitor for perf throttling ---
+        let lastFrameTime = performance.now();
+        let frameCount = 0, fps = 60, fpsSampleStart = lastFrameTime;
+        let gridDetailReduced = false;
 
         // --- Chill Mode Variables ---
         let chillParticles = [];
@@ -178,6 +185,10 @@
             } else if (audioContext.state === "suspended") {
                 audioContext.resume();
             }
+            visualizerActive = true;
+        });
+        audio.addEventListener('pause', () => {
+            visualizerActive = false;
         });
 
         // Handle audio file uploads (fix: always re-init the audio graph on file change)
@@ -192,7 +203,6 @@
                     audioContext.close();
                     audioContext = null;
                 }
-                // Wait for new file to be ready and then re-init the audio graph
                 audio.oncanplay = () => {
                     initAudio();
                     audio.play();
@@ -287,20 +297,22 @@
         }
 
         // --- Glitchy Line Drawing Function ---
-        function drawGlitchyLine(p1, p2, scale) {
-            ctx.lineWidth = (1 / (1 + p1.depth * 0.002));
+        function drawGlitchyLine(p1, p2, scale, alpha = 1.0) {
+            // Cap line width for perf
+            ctx.lineWidth = Math.max(0.25, 1 / (1 + p1.depth * 0.002));
             if (ctx.lineWidth < 0.2) return; 
 
             let colorToUse = IS_RAINBOW_MODE ? hsvToRgb(globalTime * 0.0001 % 1, 1, 1) : BASE_LINE_COLOR;
             let opacity = Math.max(0.1, 1 - Math.abs(p1.depth) / 1500);
-            ctx.strokeStyle = hexToRgbA(colorToUse, opacity);
+            ctx.strokeStyle = hexToRgbA(colorToUse, opacity * alpha);
 
             let startX = p1.x;
             let startY = p1.y;
             let endX = p2.x;
             let endY = p2.y;
 
-            const numSegments = Math.max(2, Math.floor(Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2)) / 20)); 
+            let numSegments = Math.max(2, Math.floor(Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2)) / 20));
+            numSegments = Math.min(numSegments, MAX_LINE_SEGMENTS);
 
             for (let i = 0; i < numSegments; i++) {
                 let segStartX = lerp(startX, endX, i / numSegments);
@@ -308,9 +320,11 @@
                 let segEndX = lerp(startX, endX, (i + 1) / numSegments);
                 let segEndY = lerp(startY, endY, (i + 1) / numSegments);
 
-                // Jitter based on high-frequency energy (glitch on high notes)
+                // Jitter based on high-frequency energy
                 let jitterFactor = GLITCH_INTENSITY + midHighEnergy / 10;
                 let scaleFactor = 1 - scale;
+                // Reduce jitter if grid detail is reduced for perf
+                if (gridDetailReduced) jitterFactor *= 0.5;
                 
                 segStartX += (Math.random() - 0.5) * jitterFactor * scaleFactor;
                 segStartY += (Math.random() - 0.5) * jitterFactor * scaleFactor;
@@ -355,7 +369,9 @@
         }
 
         // --- Chill Visuals ---
-        function drawChillParticles() {
+        function drawChillParticles(alpha = 1.0) {
+            ctx.save();
+            ctx.globalAlpha = alpha;
             for (let i = 0; i < chillParticles.length; i++) {
                 const p = chillParticles[i];
                 // Pulsing radius
@@ -381,6 +397,7 @@
                 ctx.fillStyle = grad;
                 ctx.fill();
             }
+            ctx.restore();
         }
 
         // --- Main Drawing Logic ---
@@ -388,42 +405,54 @@
             ctx.fillStyle = FOG_COLOR;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            if (audio.paused || audio.currentTime === 0) {
-                // Chill Mode: No grid, just floating soft white particles
-                drawChillParticles();
-                return;
+            // --- Smoother ambience/visualizer transition ---
+            // Animate transition: modeTransition moves to 1 (grid) if visualizerActive, else to 0
+            let target = visualizerActive && !(audio.paused || audio.currentTime === 0) ? 1 : 0;
+            modeTransition += (target - modeTransition) * 0.09;
+            // Clamp for safety
+            modeTransition = Math.max(0, Math.min(1, modeTransition));
+
+            // Crossfade the two modes
+            if (modeTransition < 1) {
+                // ambience dots fade out as modeTransition goes to 1
+                drawChillParticles(1 - modeTransition);
             }
 
-            analyzeAudio();
-
-            // 1. Update Z-values based on NOISE and BASS ENERGY
-            const noiseZInput = globalTime * CURRENT_SPEED * 0.05 + bassEnergy * 5;
-            for (let i = 0; i < GRID_SIZE; i++) {
-                for (let j = 0; j < GRID_SIZE; j++) {
-                    let p = points[i][j];
-                    const baseZ = perlinNoise(
-                        (p.x + noiseOffset.x) * NOISE_SCALE,
-                        (p.y + noiseOffset.y) * NOISE_SCALE,
-                        noiseZInput
-                    ) * MAX_Z_DEFORMATION;
-                    const audioImpact = bassEnergy * MAX_Z_DEFORMATION * 2; 
-                    p.z = baseZ + audioImpact;
-                }
-            }
-
-            // 2. Draw grid lines
-            for (let i = 0; i < GRID_SIZE; i++) {
-                for (let j = 0; j < GRID_SIZE; j++) {
-                    let p1 = project(points[i][j]);
-                    if (j < GRID_SIZE - 1) {
-                        let p2 = project(points[i][j+1]);
-                        drawGlitchyLine(p1, p2, p1.scale);
-                    }
-                    if (i < GRID_SIZE - 1) {
-                        let p2 = project(points[i+1][j]);
-                        drawGlitchyLine(p1, p2, p1.scale);
+            if (modeTransition > 0.02) {
+                // Only draw the grid if at least partial transition
+                analyzeAudio();
+                // 1. Update Z-values based on NOISE and BASS ENERGY
+                const noiseZInput = globalTime * CURRENT_SPEED * 0.05 + bassEnergy * 5;
+                for (let i = 0; i < GRID_SIZE; i++) {
+                    for (let j = 0; j < GRID_SIZE; j++) {
+                        let p = points[i][j];
+                        const baseZ = perlinNoise(
+                            (p.x + noiseOffset.x) * NOISE_SCALE,
+                            (p.y + noiseOffset.y) * NOISE_SCALE,
+                            noiseZInput
+                        ) * MAX_Z_DEFORMATION;
+                        const audioImpact = bassEnergy * MAX_Z_DEFORMATION * 2; 
+                        p.z = baseZ + audioImpact;
                     }
                 }
+
+                // 2. Draw grid lines, fade in with modeTransition
+                ctx.save();
+                ctx.globalAlpha = modeTransition;
+                for (let i = 0; i < GRID_SIZE; i++) {
+                    for (let j = 0; j < GRID_SIZE; j++) {
+                        let p1 = project(points[i][j]);
+                        if (j < GRID_SIZE - 1) {
+                            let p2 = project(points[i][j+1]);
+                            drawGlitchyLine(p1, p2, p1.scale, 1.0);
+                        }
+                        if (i < GRID_SIZE - 1) {
+                            let p2 = project(points[i+1][j]);
+                            drawGlitchyLine(p1, p2, p1.scale, 1.0);
+                        }
+                    }
+                }
+                ctx.restore();
             }
         }
 
@@ -439,6 +468,26 @@
                 if (camera.z > 0) camera.z = -800; 
             }
             draw();
+
+            // --- FPS/Performance check ---
+            frameCount++;
+            let now = performance.now();
+            if (now - fpsSampleStart > 700) {
+                fps = frameCount / ((now - fpsSampleStart) / 1000);
+                frameCount = 0;
+                fpsSampleStart = now;
+                // If FPS drops below 30, reduce grid detail, else restore on recovery
+                if (fps < 28 && !gridDetailReduced) {
+                    GRID_SIZE = Math.max(18, Math.floor(GRID_SIZE * 0.68)); // reduce detail
+                    initGrid();
+                    gridDetailReduced = true;
+                } else if (fps > 34 && gridDetailReduced) {
+                    GRID_SIZE = 32; // restore
+                    initGrid();
+                    gridDetailReduced = false;
+                }
+            }
+
             requestAnimationFrame(animate);
         }
 
@@ -472,6 +521,8 @@
         });
 
         // Initializations
+        canvas.width = window.innerWidth * 0.95;
+        canvas.height = window.innerHeight * 0.95;
         initGrid();
         spawnChillParticles();
         animate();
