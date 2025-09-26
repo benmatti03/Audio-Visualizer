@@ -120,6 +120,7 @@
         const FFT_SIZE = 256;
         let bassEnergy = 0;
         let midHighEnergy = 0;
+        let mediaElementSource = null;
 
         // --- Camera & 3D Variables ---
         const camera = {
@@ -153,18 +154,25 @@
 
         // --- Initialization and Audio Setup ---
         function initAudio() {
-            if (audioContext) return;
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioContext.createAnalyser();
             analyser.fftSize = FFT_SIZE;
             frequencyData = new Uint8Array(analyser.frequencyBinCount);
-            const source = audioContext.createMediaElementSource(audio);
-            source.connect(analyser);
+            // Only ever have one mediaElementSource!
+            if (mediaElementSource) {
+                mediaElementSource.disconnect();
+                mediaElementSource = null;
+            }
+            mediaElementSource = audioContext.createMediaElementSource(audio);
+            mediaElementSource.connect(analyser);
             analyser.connect(audioContext.destination);
         }
 
         audio.addEventListener('play', () => {
-            // Always re-init and connect to destination
             if (!audioContext || audioContext.state === "closed") {
                 initAudio();
             } else if (audioContext.state === "suspended") {
@@ -172,18 +180,24 @@
             }
         });
 
-        // Handle audio file uploads
+        // Handle audio file uploads (fix: always re-init the audio graph on file change)
         fileInput.addEventListener('change', function() {
             if (fileInput.files.length > 0) {
                 const file = fileInput.files[0];
                 const url = URL.createObjectURL(file);
                 audio.src = url;
                 audio.load();
-                audio.play();
+                // Always close previous context and connection
                 if (audioContext) {
                     audioContext.close();
                     audioContext = null;
                 }
+                // Wait for new file to be ready and then re-init the audio graph
+                audio.oncanplay = () => {
+                    initAudio();
+                    audio.play();
+                    audio.oncanplay = null;
+                };
             }
         });
 
@@ -235,7 +249,7 @@
             let A = permutation[X] + Y, AA = permutation[A] + Z, AB = permutation[A + 1] + Z;
             let B = permutation[X + 1] + Y, BA = permutation[B] + Z, BB = permutation[B + 1] + Z;
             return lerp(w, lerp(v, lerp(u, grad(permutation[AA], x, y, z), grad(permutation[BA], x - 1, y, z)), lerp(u, grad(permutation[AB], x, y - 1, z), grad(permutation[BB], x - 1, y - 1, z))),
-                        lerp(v, lerp(u, grad(permutation[AA + 1], x, y, z - 1), grad(permutation[BA + 1], x - 1, y, z - 1)), lerp(u, grad(permutation[AB + 1], x, y - 1, z - 1), grad(permutation[BB + 1], x - 1, y - 1, z - 1))));
+                        lerp(v, lerp(u, grad(permutation[AA + 1], x, y, z - 1), grad(permutation[BA + 1], x - 1, y, z - 1)), lerp(u, grad(permutation[AB + 1], x, y - 1, z - 1), grad(permutation[BB + 1], x - 1, y - 1, z - 1)));
         }
 
         // --- 3D Point Structure and Grid Init ---
